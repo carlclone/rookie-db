@@ -107,6 +107,9 @@ public class Database implements AutoCloseable {
     // Statistics about the contents of the database.
     private Map<String, TableStats> stats = new ConcurrentHashMap<>();
 
+    // Names of tables loaded for demo
+    private ArrayList<String> demoTables = new ArrayList<>();
+
     /**
      * Creates a new database with:
      * - Default buffer size
@@ -284,6 +287,8 @@ public class Database implements AutoCloseable {
     public synchronized void close() {
         // wait for all transactions to terminate
         this.waitAllTransactions();
+
+        dropDemoTables();
 
         this.bufferManager.evictAll();
 
@@ -1226,10 +1231,25 @@ public class Database implements AutoCloseable {
         }
     }
 
+    public void dropDemoTables() {
+        for (String table: demoTables) {
+            try(Transaction t = beginTransaction()) {
+                t.dropTable(table);
+            } catch (DatabaseException e) {
+                // If table doesn't exist, continue
+            }
+        }
+    }
+
     public void loadDemo() throws IOException {
-        loadCSV("Students");
-        loadCSV("Courses");
-        loadCSV("Enrollments");
+        demoTables = new ArrayList<>(Arrays.asList("Students", "Courses", "Enrollments"));
+
+        dropDemoTables();
+
+        for (String table: demoTables) {
+            loadCSV(table);
+        }
+
         waitAllTransactions();
         getBufferManager().evictAll();
     }
@@ -1265,17 +1285,29 @@ public class Database implements AutoCloseable {
                 rows.add(new Record(parsed));
                 row = buffered.readLine();
             }
+
             try(Transaction t = beginTransaction()) {
                 t.createTable(schema, name);
             } catch (DatabaseException e) {
                 if (e.getMessage().contains("already exists")) return true;
                 throw e;
             }
+
+            // store table stats before inserting rows
+            Pair<RecordId, TableMetadata> pair = this.getTableMetadata(name);
+            if (pair == null) {
+                throw new DatabaseException("Table `" + name + "` does not exist!");
+            }
+            Table tb = tableFromMetadata(pair.getSecond());
+
             try (Transaction t = beginTransaction()) {
                 for (Record r : rows) {
                     t.insert(name, r);
                 }
             }
+
+            // refresh histograms so that query cost estimation works
+            tb.buildStatistics(10);
             return false;
     }
 }

@@ -764,29 +764,25 @@ public class QueryPlan {
      */
     public Iterator<Record> executeNaive() {
         this.transaction.setAliasMap(this.aliases);
-        try {
-            int indexPredicate = this.getEligibleIndexColumnNaive();
-            if (indexPredicate != -1) {
-                this.generateIndexPlanNaive(indexPredicate);
-            } else {
-                // start off with a scan on the first table
-                this.finalOperator = new SequentialScanOperator(
-                        this.transaction,
-                        this.tableNames.get(0)
-                );
+        int indexPredicate = this.getEligibleIndexColumnNaive();
+        if (indexPredicate != -1) {
+            this.generateIndexPlanNaive(indexPredicate);
+        } else {
+            // start off with a scan on the first table
+            this.finalOperator = new SequentialScanOperator(
+                    this.transaction,
+                    this.tableNames.get(0)
+            );
 
-                // add joins, selects, group by's and projects to our plan
-                this.addJoinsNaive();
-                this.addSelectsNaive();
-                this.addGroupBy();
-                this.addProject();
-                this.addSort();
-                this.addLimit();
-            }
-            return this.finalOperator.iterator();
-        } finally {
-            this.transaction.clearAliasMap();
+            // add joins, selects, group by's and projects to our plan
+            this.addJoinsNaive();
+            this.addSelectsNaive();
+            this.addGroupBy();
+            this.addProject();
+            this.addSort();
+            this.addLimit();
         }
+        return this.finalOperator.iterator();
     }
 
 }
